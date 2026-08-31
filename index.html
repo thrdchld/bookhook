@@ -269,10 +269,9 @@ WAJIB MENGEMBALIKAN HANYA FORMAT JSON VALID DENGAN STRUKTUR INI, TANPA MARKDOWN 
                         const payload = {
                             model: openaiModel,
                             messages: [
-                                { role: "system", "content": systemText },
-                                { role: "user", "content": promptText }
+                                { role: "system", content: systemText },
+                                { role: "user", content: promptText }
                             ],
-                            response_format: { type: "json_object" },
                             temperature: 0.7
                         };
 
@@ -285,13 +284,23 @@ WAJIB MENGEMBALIKAN HANYA FORMAT JSON VALID DENGAN STRUKTUR INI, TANPA MARKDOWN 
                             body: JSON.stringify(payload)
                         });
 
-                        if (!response.ok) throw new Error(`HTTP error OpenAI API! status: ${response.status}`);
+                        if (!response.ok) {
+                            const errData = await response.json().catch(() => ({}));
+                            throw new Error(`HTTP error OpenAI API! status: ${response.status}. ${errData.error?.message || 'Cek kembali URL Endpoint atau nama Model Anda.'}`);
+                        }
+                        
                         const result = await response.json();
                         
                         let jsonString = result.choices[0].message.content;
                         // Bersihkan dari sisa markdown jika model membandel
                         jsonString = jsonString.replace(/```json/gi, '').replace(/```/gi, '').trim();
-                        parsedData = JSON.parse(jsonString);
+                        
+                        try {
+                            parsedData = JSON.parse(jsonString);
+                        } catch (parseError) {
+                            console.error("Raw response:", result.choices[0].message.content);
+                            throw new Error("Model ini gagal mengembalikan format JSON yang valid (AI malah menjawab dengan teks biasa). Silakan gunakan model yang lebih pintar atau gunakan Gemini.");
+                        }
                     }
 
                     if (parsedData) {
