@@ -233,7 +233,7 @@ Tugasmu:
 ATURAN MUTLAK PROMPT GAMBAR: Visual HANYA BOLEH berisi Environment. DILARANG KERAS memasukkan makhluk hidup. Jelaskan eksplisit bahwa gambar cover akan divisualisasikan menjadi BUKU FISIK ASLI (physical book) yang menyatu di environment tersebut. Jangan masukkan parameter rasio atau teks di prompt.
 4. Berikan KOMENTAR AI (analisis singkat bahasa Indonesia) tentang visual environment.
 
-WAJIB MENGEMBALIKAN HANYA FORMAT JSON VALID DENGAN STRUKTUR INI, TANPA MARKDOWN BACKTICKS (Hanya JSON murni):
+WAJIB MENGEMBALIKAN HANYA FORMAT JSON VALID DENGAN STRUKTUR INI, TANPA MARKDOWN BACKTICKS, TANPA TEKS BASA-BASI (Hanya kembalikan 1 Objek JSON murni!):
 {
   "reviews": [
     {"reviewer": "Nama", "role": "Profesi/Jabatan", "review": "Isi review", "sourceUrl": "https://..."}
@@ -249,6 +249,36 @@ WAJIB MENGEMBALIKAN HANYA FORMAT JSON VALID DENGAN STRUKTUR INI, TANPA MARKDOWN 
 }`;
 
                     let parsedData = null;
+
+                    // Fungsi Pengekstrak JSON Cerdas (Tangguh)
+                    const parseAIText = (rawText) => {
+                        let clean = rawText.replace(/```json/gi, '').replace(/```/gi, '').trim();
+                        const start = clean.indexOf('{');
+                        if (start === -1) throw new Error("Format AI tidak mengandung awalan JSON '{'.");
+                        
+                        let depth = 0, inString = false, escapeNext = false, end = -1;
+                        
+                        for (let i = start; i < clean.length; i++) {
+                            const char = clean[i];
+                            if (escapeNext) { escapeNext = false; continue; }
+                            if (char === '\\') { escapeNext = true; continue; }
+                            if (char === '"') { inString = !inString; continue; }
+                            if (!inString) {
+                                if (char === '{') depth++;
+                                if (char === '}') depth--;
+                                if (depth === 0) { end = i; break; }
+                            }
+                        }
+                        
+                        // Ekstrak persis 1 objek saja (mencegah trailing sampah karakter setelah JSON selesai)
+                        const finalJsonStr = clean.substring(start, (end !== -1 ? end : clean.lastIndexOf('}')) + 1);
+                        try {
+                            return JSON.parse(finalJsonStr);
+                        } catch (e) {
+                            // Coba bersihkan karakter kontrol tak kasat mata jika masih error
+                            return JSON.parse(finalJsonStr.replace(/[\u0000-\u0019]+/g,""));
+                        }
+                    };
 
                     if (provider === 'gemini') {
                         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
@@ -271,7 +301,8 @@ WAJIB MENGEMBALIKAN HANYA FORMAT JSON VALID DENGAN STRUKTUR INI, TANPA MARKDOWN 
                         }
                         const result = await response.json();
                         const jsonString = result.candidates[0].content.parts[0].text;
-                        parsedData = JSON.parse(jsonString);
+                        
+                        parsedData = parseAIText(jsonString);
 
                     } else if (provider === 'openai') {
                         let baseUrl = openaiEndpoint.replace(/\/$/, '');
@@ -305,14 +336,12 @@ WAJIB MENGEMBALIKAN HANYA FORMAT JSON VALID DENGAN STRUKTUR INI, TANPA MARKDOWN 
                         const result = await response.json();
                         
                         let jsonString = result.choices[0].message.content;
-                        // Bersihkan dari sisa markdown jika model membandel
-                        jsonString = jsonString.replace(/```json/gi, '').replace(/```/gi, '').trim();
                         
                         try {
-                            parsedData = JSON.parse(jsonString);
+                            parsedData = parseAIText(jsonString);
                         } catch (parseError) {
                             console.error("Raw response:", result.choices[0].message.content);
-                            throw new Error("Model ini gagal mengembalikan format JSON yang valid (AI malah menjawab dengan teks biasa). Silakan gunakan model yang lebih pintar atau gunakan Gemini.");
+                            throw new Error("Model ini gagal mengembalikan format JSON yang valid. AI merespon dengan format berantakan. Silakan coba klik tombol Cari/Proses sekali lagi.");
                         }
                     }
 
