@@ -98,7 +98,12 @@
                 if (!openaiEndpoint) return;
                 setIsFetchingModels(true);
                 try {
-                    const baseUrl = openaiEndpoint.replace(/\/$/, ''); // hapus trailing slash
+                    let baseUrl = openaiEndpoint.replace(/\/$/, ''); // hapus trailing slash
+                    // Koreksi otomatis jika user keliru memasukkan full completion URL
+                    if (baseUrl.endsWith('/chat/completions')) {
+                        baseUrl = baseUrl.replace('/chat/completions', '');
+                        setOpenaiEndpoint(baseUrl); // Update form input agar benar
+                    }
                     const res = await fetch(`${baseUrl}/models`, {
                         method: 'GET',
                         headers: {
@@ -258,13 +263,19 @@ WAJIB MENGEMBALIKAN HANYA FORMAT JSON VALID DENGAN STRUKTUR INI, TANPA MARKDOWN 
                             body: JSON.stringify(payload)
                         });
 
-                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                        if (!response.ok) {
+                            const errData = await response.json().catch(() => ({}));
+                            throw new Error(`HTTP error Gemini! status: ${response.status}. ${errData.error?.message || 'Terjadi kesalahan pada endpoint Gemini.'}`);
+                        }
                         const result = await response.json();
                         const jsonString = result.candidates[0].content.parts[0].text;
                         parsedData = JSON.parse(jsonString);
 
                     } else if (provider === 'openai') {
-                        const baseUrl = openaiEndpoint.replace(/\/$/, '');
+                        let baseUrl = openaiEndpoint.replace(/\/$/, '');
+                        if (baseUrl.endsWith('/chat/completions')) {
+                            baseUrl = baseUrl.replace('/chat/completions', '');
+                        }
                         const apiUrl = `${baseUrl}/chat/completions`;
                         const payload = {
                             model: openaiModel,
@@ -286,7 +297,7 @@ WAJIB MENGEMBALIKAN HANYA FORMAT JSON VALID DENGAN STRUKTUR INI, TANPA MARKDOWN 
 
                         if (!response.ok) {
                             const errData = await response.json().catch(() => ({}));
-                            throw new Error(`HTTP error OpenAI API! status: ${response.status}. ${errData.error?.message || 'Cek kembali URL Endpoint atau nama Model Anda.'}`);
+                            throw new Error(`HTTP error OpenAI API! status: ${response.status}. ${response.status === 404 ? 'Endpoint URL tidak ditemukan (404). Pastikan Base URL hanya sampai versi API (misal: https://api.openai.com/v1).' : (errData.error?.message || 'Cek kembali URL Endpoint atau nama Model Anda.')}`);
                         }
                         
                         const result = await response.json();
